@@ -472,12 +472,31 @@ class civicrm_cli_csv_importer extends civicrm_cli_csv_file {
    * @param array $params
    */
   public function processline($params) {
+    echo "Line " . $this->row . ": ";
+    // If we're creating an entity other than Contact, allow External ID to be used to specify contact
+    if ($this->_entity <> "Contact" 
+      && (!array_key_exists("contact_id", $params) || $params['contact_id' == "") // contact_id either isn't a column or is blank
+      && (array_key_exists("external_identifier", $params) && $params['external_identifier'] <> "") { // external_identifier is a column and isn't blank
+
+      $contact = civicrm_api3('Contact', 'get', array(
+        'sequential' => 1,
+        'external_identifier' => $params['external_identifier'],
+      ));
+
+      if ($contact['is_error'] || $contact['count'] == 0 || $contact['values'][0]['contact_is_deleted'] === 1) {
+          echo $contact['error_message'] . ": external id: " . $params['external_identifier'] . " ";
+      } else {
+        echo "Looked up external id " . $params['external_identifier'] . " (" . $contact['values'][0]['display_name'] . " id " . $contact['id'] . ") ";
+        $params['contact_id'] = $contact['id'];
+      }
+    }
+    
     $result = civicrm_api($this->_entity, 'Create', $params);
     if ($result['is_error']) {
-      echo "\nERROR line " . $this->row . ": " . $result['error_message'] . "\n";
+      echo "ERROR creating " . $this->entity . ": " . $result['error_message'] . "\n";
     }
     else {
-      echo "\nline " . $this->row . ": created " . $this->_entity . " id: " . $result['id'] . "\n";
+      echo "created " . $this->_entity . " id: " . $result['id'] . "\n";
     }
   }
 
