@@ -329,8 +329,20 @@ class civicrm_cli {
     // that properly logs
     print "$error\n";
   }
-
 }
+
+  /**
+   * Returns a of matching contact
+   * @param $match_value, $match_field, $match_location
+   */
+  public function _match_contact($match_value, $match_field = 'external_identifier', $match_location = 'primary') {
+    $contact = civicrm_api3('Contact', 'get', array(
+      'sequential' => 1,
+      $match_field => $match_value,
+      'contact_is_deleted' => 0,
+    ));
+    return $contact;
+  }
 
 /**
  * class used by csv/export.php to export records from
@@ -418,6 +430,9 @@ class civicrm_cli_csv_file extends civicrm_cli {
       $this->separator = ";";
       rewind($handle);
       $header = fgetcsv($handle, 0, $this->separator);
+      if (count($header) == 1) {
+        die("Invalid file format for " . $this->_file . ". It must be a valid csv with separator ',' or ';'\n");
+      }
     }
 
     $this->header = $header;
@@ -469,21 +484,20 @@ class civicrm_cli_csv_importer extends civicrm_cli_csv_file {
    * @param array $params
    */
   public function processline($params) {
+    
     echo "Line " . $this->row . ": ";
     // If we're creating an entity other than Contact, allow External ID to be used to specify contact
     if ($this->_entity <> "Contact" 
-      && (!array_key_exists("contact_id", $params) || $params['contact_id' == "") // contact_id either isn't a column or is blank
-      && (array_key_exists("external_identifier", $params) && $params['external_identifier'] <> "") { // external_identifier is a column and isn't blank
+      && (!array_key_exists("contact_id", $params) || $params['contact_id'] == "") // contact_id either isn't a column or is blank
+      && (array_key_exists("external_identifier", $params) && $params['external_identifier'] <> "")) { // external_identifier is a column and isn't blank
 
-      $contact = civicrm_api3('Contact', 'get', array(
-        'sequential' => 1,
-        'external_identifier' => $params['external_identifier'],
-      ));
+      echo "Looking up external id " . $params['external_identifier'] . ". ";
+      $contact = $this->_match_contact($params['external_identifier']);
 
       if ($contact['is_error'] || $contact['count'] == 0 || $contact['values'][0]['contact_is_deleted'] === 1) {
-          echo $contact['error_message'] . ": external id: " . $params['external_identifier'] . " ";
+          echo "ERROR " . $contact['error_message'] . " ";
       } else {
-        echo "Looked up external id " . $params['external_identifier'] . " (" . $contact['values'][0]['display_name'] . " id " . $contact['id'] . ") ";
+        echo "Found " . $contact['values'][0]['display_name'] . " #" . $contact['id'] . ". ";
         $params['contact_id'] = $contact['id'];
       }
     }
@@ -493,10 +507,10 @@ class civicrm_cli_csv_importer extends civicrm_cli_csv_file {
       echo "ERROR creating " . $this->entity . ": " . $result['error_message'] . "\n";
     }
     else {
-      echo "created " . $this->_entity . " id: " . $result['id'] . "\n";
+      echo "Created " . $this->_entity . " id: " . $result['id'] . ".\n";
     }
-  }
 
+  }
 }
 
 /**
