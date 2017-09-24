@@ -332,7 +332,6 @@ class civicrm_cli {
     // that properly logs
     print "$error\n";
   }
-}
 
   /**
    * Returns matching contact(s)
@@ -349,6 +348,7 @@ class civicrm_cli {
     ));
     return $contact;
   }
+}
 
 /**
  * class used by csv/export.php to export records from
@@ -491,19 +491,20 @@ class civicrm_cli_csv_importer extends civicrm_cli_csv_file {
    */
   public function processline($params) {
     echo "Line " . $this->row . ": ";
+    
     // If we're creating an entity other than Contact, allow External ID to be used to specify contact
     if ($this->_entity <> "Contact" 
       && (!array_key_exists("contact_id", $params) || $params['contact_id'] == "") // contact_id either isn't a column or is blank
       && (array_key_exists("external_identifier", $params) && $params['external_identifier'] <> "")) { // external_identifier is a column and isn't blank
       echo "Looking up external id " . $params['external_identifier'] . ". ";
       $contact = $this->_match_contact($params['external_identifier']);
-      if ($contact['is_error'] == 1) {
+      if ($contact['is_error']) {
           echo "ERROR " . $contact['error_message'] . " ";
       } else {
         if ($contact['count'] = 0) {
           echo "ERROR no contact matching " . $params['external_identifier'] . " ";
           return;
-        } elseif ($contact['count'] > 1 {
+        } elseif ($contact['count'] > 1) {
           echo "ERROR multiple matches for " . $params['external_identifier'] . " - Skipping. ";
           return;
         } else {
@@ -511,12 +512,12 @@ class civicrm_cli_csv_importer extends civicrm_cli_csv_file {
         $params['contact_id'] = $contact['id'];
         }
       }
-    }    
+    }
+    
     $result = civicrm_api($this->_entity, 'Create', $params);
     if ($result['is_error']) {
       echo "ERROR creating " . $this->entity . ": " . $result['error_message'] . "\n";
-    }
-    else {
+    } else {
       echo "Created " . $this->_entity . " id: " . $result['id'] . ".\n";
     }
   }
