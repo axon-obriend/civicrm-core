@@ -335,10 +335,13 @@ class civicrm_cli {
 }
 
   /**
-   * Returns a of matching contact
-   * @param $match_value, $match_field, $match_location
+   * Returns matching contact(s)
+   * @params $match_value, Key to search for
+        $match_field, Field to match (default: external_identifier)
+        $match_location location for match (Home, Work, etc) ** Not implemented yet
    */
   public function _match_contact($match_value, $match_field = 'external_identifier', $match_location = 'primary') {
+    // TODO: Search phone/email by location
     $contact = civicrm_api3('Contact', 'get', array(
       'sequential' => 1,
       $match_field => $match_value,
@@ -487,24 +490,28 @@ class civicrm_cli_csv_importer extends civicrm_cli_csv_file {
    * @param array $params
    */
   public function processline($params) {
-    
     echo "Line " . $this->row . ": ";
     // If we're creating an entity other than Contact, allow External ID to be used to specify contact
     if ($this->_entity <> "Contact" 
       && (!array_key_exists("contact_id", $params) || $params['contact_id'] == "") // contact_id either isn't a column or is blank
       && (array_key_exists("external_identifier", $params) && $params['external_identifier'] <> "")) { // external_identifier is a column and isn't blank
-
       echo "Looking up external id " . $params['external_identifier'] . ". ";
       $contact = $this->_match_contact($params['external_identifier']);
-
-      if ($contact['is_error'] || $contact['count'] == 0 || $contact['values'][0]['contact_is_deleted'] === 1) {
+      if ($contact['is_error'] == 1) {
           echo "ERROR " . $contact['error_message'] . " ";
       } else {
+        if ($contact['count'] = 0) {
+          echo "ERROR no contact matching " . $params['external_identifier'] . " ";
+          return;
+        } elseif ($contact['count'] > 1 {
+          echo "ERROR multiple matches for " . $params['external_identifier'] . " - Skipping. ";
+          return;
+        } else {
         echo "Found " . $contact['values'][0]['display_name'] . " #" . $contact['id'] . ". ";
         $params['contact_id'] = $contact['id'];
+        }
       }
-    }
-    
+    }    
     $result = civicrm_api($this->_entity, 'Create', $params);
     if ($result['is_error']) {
       echo "ERROR creating " . $this->entity . ": " . $result['error_message'] . "\n";
@@ -512,7 +519,6 @@ class civicrm_cli_csv_importer extends civicrm_cli_csv_file {
     else {
       echo "Created " . $this->_entity . " id: " . $result['id'] . ".\n";
     }
-
   }
 }
 
