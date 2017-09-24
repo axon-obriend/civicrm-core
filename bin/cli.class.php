@@ -513,7 +513,7 @@ class civicrm_cli_csv_importer extends civicrm_cli_csv_file {
     
     $result = civicrm_api($this->_entity, 'Create', $params);
     if ($result['is_error']) {
-      echo "ERROR creating " . $this->entity . ": " . $result['error_message'] . "\n";
+      echo "ERROR creating " . $this->_entity . ": " . $result['error_message'] . "\n";
     } else {
       echo "Created " . $this->_entity . " id: " . $result['id'] . ".\n";
     }
