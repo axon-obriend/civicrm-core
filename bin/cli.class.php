@@ -490,27 +490,31 @@ class civicrm_cli_csv_importer extends civicrm_cli_csv_file {
     echo "Line " . $this->row . ": ";
     
     // If we're creating an entity other than Contact, allow External ID to be used to specify contact
-    if ($this->_entity <> "Contact" 
-      && (!array_key_exists("contact_id", $params) || $params['contact_id'] == "") // contact_id either isn't a column or is blank
+    if ( (!array_key_exists("contact_id", $params) || $params['contact_id'] == "") // contact_id either isn't a column or is blank
       && (array_key_exists("external_identifier", $params) && $params['external_identifier'] <> "")) { // external_identifier is a column and isn't blank
-      echo "Looking up external id " . $params['external_identifier'] . ". ";
+      echo "Looking up contact by external_identifier " . $params['external_identifier'] . ". ";
       $contact = $this->_match_contact($params['external_identifier']);
       if ($contact['is_error']) {
           echo "ERROR " . $contact['error_message'] . " ";
       } else {
-        if ($contact['count'] = 0) {
-          echo "ERROR no contact matching " . $params['external_identifier'] . " ";
-          return;
+        if ($contact['count'] == 0) {
+          if ($this->_entity <> "Contact") {
+            echo "ERROR no contact matching " . $params['external_identifier'] . " ";
+            return;
+          }
         } elseif ($contact['count'] > 1) {
           echo "ERROR multiple matches for " . $params['external_identifier'] . " - Skipping. ";
           return;
         } else {
-        echo "Found " . $contact['values'][0]['display_name'] . " #" . $contact['id'] . ". ";
-        $params['contact_id'] = $contact['id'];
+          echo "Found " . $contact['values'][0]['display_name'] . " #" . $contact['id'] . ". ";
+          $params['contact_id'] = $contact['id'];
+          if ($this->_entity == "Contact") {
+            unset($params['external_identifier']); // drop external_identifier to avoid DB Error: already exists
+          }
         }
       }
     }
-    
+   
     $result = civicrm_api($this->_entity, 'Create', $params);
     if ($result['is_error']) {
       echo "ERROR creating " . $this->_entity . ": " . $result['error_message'] . "\n";
