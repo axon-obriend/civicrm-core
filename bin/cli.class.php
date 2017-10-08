@@ -47,6 +47,7 @@ class civicrm_cli {
   var $_output = FALSE;
   var $_joblog = FALSE;
   var $_semicolon = FALSE;
+  var $_errfile = 'php://stderr';
   var $_config;
 
   // optional arguments
@@ -192,6 +193,9 @@ class civicrm_cli {
       elseif ($arg == '-sem' || $arg == '--semicolon') {
         $this->_semicolon = TRUE;
       }
+      elseif ($arg == '-E' || $arg == '--errors-to') {
+        $this->_errfile = $value;
+      }
       else {
         foreach ($this->_additional_arguments as $short => $long) {
           if ($arg == '-' . $short || $arg == '--' . $long) {
@@ -313,13 +317,14 @@ class civicrm_cli {
    * @return string
    */
   private function _getUsage() {
-    $out = "Usage: cli.php -e entity -a action [-u user] [-s site] [--output|--json] [PARAMS]\n";
+    $out = "Usage: cli.php -e entity -a action [-u user] [-s site] [--output|--json] [--errors-to file] [PARAMS]\n";
     $out .= "  entity is the name of the entity, e.g. Contact, Event, etc.\n";
     $out .= "  action is the name of the action e.g. Get, Create, etc.\n";
     $out .= "  user is an optional username to run the script as\n";
     $out .= "  site is the domain name of the web site (for Drupal multi site installs)\n";
     $out .= "  --output will pretty print the result from the api call\n";
     $out .= "  --json will print the result from the api call as JSON\n";
+    $out .= "  --errors-to specify a file for records rejected during inmport\n";
     $out .= "  PARAMS is one or more --param=value combinations to pass to the api\n";
     return ts($out);
   }
@@ -426,8 +431,18 @@ class civicrm_cli_csv_file extends civicrm_cli {
 
     if (!$handle) {
       die("Could not open file: " . $this->_file . ". Please provide an absolute path.\n");
+    } else {
+        echo "Debug: handle: " . $handle . "\n"; //DEBUG
     }
 
+    echo "Debug: _errfile: " . $this->_errfile . "\n"; //DEBUG
+    $errfile = fopen($this->_errfile, "w");
+    if (!$errfile) {
+      die("Could not open errors output file " . $this->_errfile . " for writing.\n");
+    } else {
+        echo "Debug: errfile: " . $errfile . "\n"; //DEBUG
+    }
+    
     //header
     $header = fgetcsv($handle, 0, $this->separator);
     // In case fgetcsv couldn't parse the header and dumped the whole line in 1 array element
@@ -453,9 +468,10 @@ class civicrm_cli_csv_file extends civicrm_cli {
         CRM_Core_DAO::freeResult();
       }
       $params = $this->convertLine($data);
-      $this->processLine($params);
+      $this->processLine($params, $errfile);
     }
     fclose($handle);
+    fclose($errfile);
   }
 
   /* return a params as expected */
@@ -489,7 +505,9 @@ class civicrm_cli_csv_importer extends civicrm_cli_csv_file {
   /**
    * @param array $params
    */
-  public function processline($params) {
+  public function processline($params, &$errfile) {
+    $msg = "";
+    echo "Debug: " . $this->_errfile . "+" . $errfile . "\n";
     echo "Line " . $this->row . ": ";
     
     // If we're creating an entity other than Contact, allow External ID to be used to specify contact
@@ -498,16 +516,14 @@ class civicrm_cli_csv_importer extends civicrm_cli_csv_file {
       echo "Looking up contact by external_identifier " . $params['external_identifier'] . ". ";
       $contact = $this->_match_contact($params['external_identifier']);
       if ($contact['is_error']) {
-          echo "ERROR " . $contact['error_message'] . " ";
+          $msg = "ERROR " . $contact['error_message'] . " ";
       } else {
         if ($contact['count'] == 0) {
           if ($this->_entity <> "Contact") {
-            echo "ERROR no contact matching " . $params['external_identifier'] . " ";
-            return;
+            $msg = "ERROR no contact matching " . $params['external_identifier'] . " ";
           }
         } elseif ($contact['count'] > 1) {
-          echo "ERROR multiple matches for " . $params['external_identifier'] . " - Skipping. ";
-          return;
+          $msg = "ERROR multiple matches for " . $params['external_identifier'] . " - Skipping. ";
         } else {
           echo "Found " . $contact['values'][0]['display_name'] . " #" . $contact['id'] . ". ";
           $params['contact_id'] = $contact['id'];
@@ -517,12 +533,21 @@ class civicrm_cli_csv_importer extends civicrm_cli_csv_file {
         }
       }
     }
-   
-    $result = civicrm_api($this->_entity, 'Create', $params);
-    if ($result['is_error']) {
-      echo "ERROR creating " . $this->_entity . ": " . $result['error_message'] . "\n";
-    } else {
+
+    if (!$msg) {
+      $result = civicrm_api($this->_entity, 'Create', $params);
+      if ($result['is_error']) {
+        $msg = "ERROR creating " . $this->_entity . ": " . $result['error_message'] . "\n";
+      }
+    }
+    if (!$msg) {      
       echo "Created " . $this->_entity . " id: " . $result['id'] . ".\n";
+    } else {
+      $params['row'] = $this->row;
+      $params['error'] = $msg;
+      echo "Debug: params: " . print_r($params, true) . "\n";
+      fputcsv($errfile, $params);
+      echo $msg . "\n";
     }
   }
 }
