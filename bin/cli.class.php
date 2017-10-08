@@ -47,7 +47,7 @@ class civicrm_cli {
   var $_output = FALSE;
   var $_joblog = FALSE;
   var $_semicolon = FALSE;
-  var $_errfile = 'php://stderr';
+  var $_errfile = NULL;
   var $_config;
 
   // optional arguments
@@ -431,16 +431,12 @@ class civicrm_cli_csv_file extends civicrm_cli {
 
     if (!$handle) {
       die("Could not open file: " . $this->_file . ". Please provide an absolute path.\n");
-    } else {
-        echo "Debug: handle: " . $handle . "\n"; //DEBUG
     }
-
-    echo "Debug: _errfile: " . $this->_errfile . "\n"; //DEBUG
-    $errfile = fopen($this->_errfile, "w");
-    if (!$errfile) {
-      die("Could not open errors output file " . $this->_errfile . " for writing.\n");
-    } else {
-        echo "Debug: errfile: " . $errfile . "\n"; //DEBUG
+    if ($this->_errfile) {
+      $errfile = fopen($this->_errfile, "w");
+      if (!$errfile) {
+        die("Could not open errors output file " . $this->_errfile . " for writing.\n");
+      } 
     }
     
     //header
@@ -471,7 +467,9 @@ class civicrm_cli_csv_file extends civicrm_cli {
       $this->processLine($params, $errfile);
     }
     fclose($handle);
-    fclose($errfile);
+    if ($this->_errfile) {
+      fclose($errfile);
+    }
   }
 
   /* return a params as expected */
@@ -506,49 +504,46 @@ class civicrm_cli_csv_importer extends civicrm_cli_csv_file {
    * @param array $params
    */
   public function processline($params, &$errfile) {
-    $msg = "";
-    echo "Debug: " . $this->_errfile . "+" . $errfile . "\n";
     echo "Line " . $this->row . ": ";
+    $msg = "";
+    $params_orig = $params;
     
-    // If we're creating an entity other than Contact, allow External ID to be used to specify contact
-    if ( (!array_key_exists("contact_id", $params) || $params['contact_id'] == "") // contact_id either isn't a column or is blank
-      && (array_key_exists("external_identifier", $params) && $params['external_identifier'] <> "")) { // external_identifier is a column and isn't blank
+    if ($params['contact_id'] == "" && $params['external_identifier'] <> "") {
+
       echo "Looking up contact by external_identifier " . $params['external_identifier'] . ". ";
       $contact = $this->_match_contact($params['external_identifier']);
-      if ($contact['is_error']) {
-          $msg = "ERROR " . $contact['error_message'] . " ";
-      } else {
-        if ($contact['count'] == 0) {
-          if ($this->_entity <> "Contact") {
-            $msg = "ERROR no contact matching " . $params['external_identifier'] . " ";
-          }
-        } elseif ($contact['count'] > 1) {
-          $msg = "ERROR multiple matches for " . $params['external_identifier'] . " - Skipping. ";
-        } else {
-          echo "Found " . $contact['values'][0]['display_name'] . " #" . $contact['id'] . ". ";
-          $params['contact_id'] = $contact['id'];
-          if ($this->_entity == "Contact") {
-            unset($params['external_identifier']); // drop external_identifier to avoid DB Error: already exists
-          }
+
+      if ($contact['count'] == 1) { 
+        /* We found a contact and can use contact ID instead of external ID */
+        echo "Found " . $contact['values'][0]['display_name'] . " #" . $contact['id'] . ". ";
+        $params['contact_id'] = $contact['id'];
+      } elseif ($contact['count'] > 1) {
+        $msg = "ERROR multiple matches for " . $params['external_identifier'] . " - Skipping.";
+        echo $msg . " ";
+      }
+
+      if (!$msg) {
+        if ($this->_entity == "Contact") {
+          unset($params['external_identifier']); // drop external_identifier to avoid DB Error: already exists
+        }
+        $result = civicrm_api($this->_entity, 'Create', $params);
+        if ($result['is_error']) {
+          $msg = "ERROR creating " . $this->_entity . ": " . $result['error_message'];
+          echo $msg . " ";
         }
       }
-    }
 
-    if (!$msg) {
-      $result = civicrm_api($this->_entity, 'Create', $params);
-      if ($result['is_error']) {
-        $msg = "ERROR creating " . $this->_entity . ": " . $result['error_message'] . "\n";
+      if (!$msg) {      
+        echo "Created " . $this->_entity . " id: " . $result['id'] . ".";
+      } elseif ($this->_errfile) {
+        unset($params_orig['version']);
+        $params_orig['line_number'] = $this->row;
+        $params_orig['error'] = $msg;
+        fputcsv($errfile, $params_orig);
       }
+
     }
-    if (!$msg) {      
-      echo "Created " . $this->_entity . " id: " . $result['id'] . ".\n";
-    } else {
-      $params['row'] = $this->row;
-      $params['error'] = $msg;
-      echo "Debug: params: " . print_r($params, true) . "\n";
-      fputcsv($errfile, $params);
-      echo $msg . "\n";
-    }
+    echo "\n";
   }
 }
 
