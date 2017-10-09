@@ -321,7 +321,7 @@ class civicrm_cli {
     $out .= "  site is the domain name of the web site (for Drupal multi site installs)\n";
     $out .= "  --output will pretty print the result from the api call\n";
     $out .= "  --json will print the result from the api call as JSON\n";
-    $out .= "  --errors-to specify a file for records rejected during inmport\n";
+    $out .= "  --errors-to specify a file for records rejected during import\n";
     $out .= "  PARAMS is one or more --param=value combinations to pass to the api\n";
     return ts($out);
   }
