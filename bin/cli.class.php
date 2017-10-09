@@ -424,6 +424,7 @@ class civicrm_cli_csv_file extends civicrm_cli {
    */
   public function run() {
     $this->row = 1;
+    $this->errors = 0;
     $handle = fopen($this->_file, "r");
 
     if (!$handle) {
@@ -533,10 +534,16 @@ class civicrm_cli_csv_importer extends civicrm_cli_csv_file {
       if (!$msg) {      
         echo "Created " . $this->_entity . " id: " . $result['id'] . ".";
       } elseif ($this->_errfile) {
-        unset($params_orig['version']);
-        $params_orig['line_number'] = $this->row;
-        $params_orig['error'] = $msg;
-        fputcsv($errfile, $params_orig);
+          $this->errors++;
+          if ($this->errors == 1) {
+            $header = $this->header;
+            array_push($header, 'line_number', 'error');
+            fputcsv($errfile, $header, $this->separator, '"');
+          }
+          unset($params_orig['version']);
+          $params_orig['line_number'] = $this->row;
+          $params_orig['error'] = $msg;
+          fputcsv($errfile, $params_orig, $this->separator, '"');
       }
 
     }
